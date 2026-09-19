@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+check_untracked_file() {
+  local path="$1"
+  local output rc
+  set +e
+  output=$(git diff --no-index --check /dev/null "$path" 2>&1)
+  rc=$?
+  set -e
+  if [ "$rc" -gt 1 ]; then
+    printf '%s\n' "$output"
+    return 1
+  fi
+  return 0
+}
+
+check_untracked_whitespace() {
+  local bad=0
+  local path nested
+
+  while IFS= read -r -d '' path; do
+    if [ -d "./$path" ]; then
+      while IFS= read -r -d '' nested; do
+        if ! check_untracked_file "$nested"; then
+          bad=1
+        fi
+      done < <(find "./$path" -path '*/.git' -prune -o -type f -print0)
+    elif [ -f "./$path" ]; then
+      if ! check_untracked_file "./$path"; then
+        bad=1
+      fi
+    fi
+  done < <(git ls-files --others --exclude-standard -z)
+
+  test "$bad" -eq 0
+}
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+export PYTHONDONTWRITEBYTECODE=1
+
+echo '== repository contract =='
+python3 tools/repo_contract.py
+
+echo '== unit tests =='
+python3 -m unittest discover -s tests -v
+
+echo '== script syntax =='
+bash -n tools/dev/check
+while IFS= read -r -d '' path; do
+  python3 -m py_compile "$path"
+done < <(git ls-files -z '*.py')
+
+echo '== whitespace =='
+base_ref="${QA_BASE_REF:-origin/main}"
+if ! git rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null; then
+  echo "QA base ref unavailable: $base_ref" >&2
+  echo "Set QA_BASE_REF to the branch base commit/ref." >&2
+  exit 2
+fi
+base_commit=$(git merge-base "$base_ref" HEAD)
+git diff --check "$base_commit"..HEAD
+git diff --cached --check
+git diff --check
+
+echo '== untracked whitespace =='
+check_untracked_whitespace
+
+echo DEV_CHECK_PASS
