@@ -15,6 +15,22 @@ check_untracked_file() {
   return 0
 }
 
+resolve_qa_diff_base() {
+  local base_ref="$1"
+  case "${QA_BASE_MODE:-merge-base}" in
+    direct)
+      git rev-parse "$base_ref^{commit}"
+      ;;
+    merge-base)
+      git merge-base "$base_ref" HEAD
+      ;;
+    *)
+      echo "Unsupported QA_BASE_MODE: ${QA_BASE_MODE}" >&2
+      return 2
+      ;;
+  esac
+}
+
 check_python_syntax() {
   local path
   while IFS= read -r -d '' path; do
@@ -67,7 +83,7 @@ if ! git rev-parse --verify --quiet "$base_ref^{commit}" >/dev/null; then
   echo "Set QA_BASE_REF to the branch base commit/ref." >&2
   exit 2
 fi
-base_commit=$(git merge-base "$base_ref" HEAD)
+base_commit=$(resolve_qa_diff_base "$base_ref")
 git diff --check "$base_commit"..HEAD
 git diff --cached --check
 git diff --check

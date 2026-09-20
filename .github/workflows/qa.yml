@@ -21,4 +21,5 @@ jobs:
       - name: Run canonical QA
         env:
           QA_BASE_REF: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
+          QA_BASE_MODE: ${{ github.event_name == 'push' && 'direct' || 'merge-base' }}
         run: bash tools/dev/check
