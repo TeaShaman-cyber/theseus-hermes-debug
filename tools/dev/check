@@ -15,6 +15,13 @@ check_untracked_file() {
   return 0
 }
 
+check_python_syntax() {
+  local path
+  while IFS= read -r -d '' path; do
+    python3 -c 'import pathlib, sys; compile(pathlib.Path(sys.argv[1]).read_bytes(), sys.argv[1], "exec")' "$path"
+  done < <(git ls-files -z '*.py')
+}
+
 check_untracked_whitespace() {
   local bad=0
   local path nested
@@ -51,9 +58,7 @@ python3 -m unittest discover -s tests -v
 
 echo '== script syntax =='
 bash -n tools/dev/check
-while IFS= read -r -d '' path; do
-  python3 -m py_compile "$path"
-done < <(git ls-files -z '*.py')
+check_python_syntax
 
 echo '== whitespace =='
 base_ref="${QA_BASE_REF:-origin/main}"
